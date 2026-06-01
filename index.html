@@ -107,19 +107,28 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwACQdYbYBAn0nYQN0oJ
 const getUrl = () => localStorage.getItem("gaspro_script_url") || SCRIPT_URL;
 
 // ─── API ──────────────────────────────────────────────────────────────────────
-// Google Apps Script requiere mode:"no-cors" y body como texto plano para evitar
-// el preflight CORS que bloquea la petición desde páginas externas.
+// FormData evita el preflight CORS y entrega el body correctamente a Apps Script.
+// El script lee e.parameter.payload (campo del formulario).
 async function sendToSheets(sheetName, rows) {
   const url = getUrl();
   if (!url) throw new Error("URL no configurada. Ve a ⚙ Configuración.");
-  await fetch(url, {
-    method: "POST",
-    mode: "no-cors",                          // evita el error CORS
-    headers: { "Content-Type": "text/plain" }, // text/plain no genera preflight
-    body: JSON.stringify({ sheet: sheetName, rows }),
-  });
-  // Con no-cors la respuesta es opaca (no se puede leer),
-  // si no lanzó excepción significa que llegó al servidor.
+  const form = new FormData();
+  form.append("payload", JSON.stringify({ sheet: sheetName, rows }));
+  const res = await fetch(url, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`Error HTTP ${res.status}`);
+  const json = await res.json().catch(() => { throw new Error("Respuesta inválida del servidor."); });
+  if (json.status !== "ok") throw new Error(json.message || "Error desconocido.");
+}
+
+// Prueba GET de conexión — llama ?action=ping
+async function testConnection() {
+  const url = getUrl();
+  if (!url) throw new Error("URL no configurada.");
+  const res = await fetch(url + "?action=ping");
+  if (!res.ok) throw new Error(`Error HTTP ${res.status}`);
+  const json = await res.json().catch(() => { throw new Error("Respuesta inválida."); });
+  if (json.status !== "ok") throw new Error(json.message || "Sin respuesta del servidor.");
+  return json.message;
 }
 
 // ─── TOAST HOOK ───────────────────────────────────────────────────────────────
@@ -416,14 +425,36 @@ function DescargasForm() {
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 function ConfigView() {
-  const [url,   setUrl]   = useState(() => getUrl());
-  const [saved, setSaved] = useState(false);
+  const [url,        setUrl]       = useState(() => getUrl());
+  const [saved,      setSaved]     = useState(false);
+  const [connStatus, setConnStatus]= useState(null); // null | "testing" | "ok" | "error"
+  const [connMsg,    setConnMsg]   = useState("");
 
   const save = () => {
     localStorage.setItem("gaspro_script_url", url.trim());
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
   };
+
+  const testConn = async () => {
+    setConnStatus("testing");
+    setConnMsg("Probando conexión…");
+    try {
+      const msg = await testConnection();
+      setConnStatus("ok");
+      setConnMsg(msg);
+    } catch(e) {
+      setConnStatus("error");
+      setConnMsg(e.message);
+    }
+  };
+
+  const connColors = {
+    testing: { bg:"rgba(79,156,255,.12)",  border:"rgba(79,156,255,.4)",  text:"#4f9cff" },
+    ok:      { bg:"rgba(0,212,170,.12)",   border:"rgba(0,212,170,.4)",   text:"#00d4aa" },
+    error:   { bg:"rgba(255,107,107,.12)", border:"rgba(255,107,107,.4)", text:"#ff6b6b" },
+  };
+  const cc = connStatus ? connColors[connStatus] : null;
 
   const steps = [
     "1. Abre tu Google Sheet → Extensiones → Apps Script.",
@@ -442,7 +473,7 @@ function ConfigView() {
         Conecta la app a tu Google Sheet publicando un Apps Script como Web App.
       </p>
 
-      <div style={{ marginBottom:24 }}>
+      <div style={{ marginBottom:16 }}>
         <label style={{ fontSize:12, color:"#8a9aaa", fontWeight:700,
           letterSpacing:1, textTransform:"uppercase", display:"block", marginBottom:10 }}>
           URL del Google Apps Script
@@ -459,18 +490,47 @@ function ConfigView() {
         />
       </div>
 
-      <button onClick={save} style={{
-        background: saved ? "rgba(0,212,170,.15)" : "linear-gradient(135deg,#c084fc28,#c084fc12)",
-        border: `1px solid ${saved ? "#00d4aa60" : "#c084fc60"}`,
-        color: saved ? "#00d4aa" : "#c084fc",
-        borderRadius:10, padding:"12px 24px",
-        fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
-      }}>
-        {saved ? "✓ Guardado" : "Guardar URL"}
-      </button>
+      {/* Botones */}
+      <div style={{ display:"flex", gap:12, alignItems:"center", flexWrap:"wrap", marginBottom:28 }}>
+        <button onClick={save} style={{
+          background: saved ? "rgba(0,212,170,.15)" : "linear-gradient(135deg,#c084fc28,#c084fc12)",
+          border: `1px solid ${saved ? "#00d4aa60" : "#c084fc60"}`,
+          color: saved ? "#00d4aa" : "#c084fc",
+          borderRadius:10, padding:"12px 22px",
+          fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+        }}>
+          {saved ? "✓ Guardado" : "Guardar URL"}
+        </button>
 
-      <div style={{ marginTop:40, padding:22,
-        background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.07)", borderRadius:14 }}>
+        <button onClick={testConn} disabled={connStatus === "testing"} style={{
+          background: "linear-gradient(135deg,rgba(0,212,170,.18),rgba(0,212,170,.08))",
+          border: "1px solid rgba(0,212,170,.5)",
+          color: connStatus === "testing" ? "#6a7a8a" : "#00d4aa",
+          borderRadius:10, padding:"12px 22px",
+          fontSize:14, fontWeight:700,
+          cursor: connStatus === "testing" ? "default" : "pointer",
+          fontFamily:"inherit", display:"flex", alignItems:"center", gap:8,
+        }}>
+          {connStatus === "testing"
+            ? <span style={{ animation:"pulse 1s infinite" }}>Probando…</span>
+            : "⚡ Probar conexión"}
+        </button>
+      </div>
+
+      {/* Resultado del test */}
+      {connStatus && connStatus !== "testing" && (
+        <div style={{
+          background: cc.bg, border: `1px solid ${cc.border}`,
+          borderRadius:10, padding:"14px 18px", marginBottom:28,
+          display:"flex", alignItems:"center", gap:12,
+        }}>
+          <span style={{ fontSize:20 }}>{connStatus === "ok" ? "✓" : "✗"}</span>
+          <span style={{ fontSize:14, fontWeight:600, color: cc.text }}>{connMsg}</span>
+        </div>
+      )}
+
+      <div style={{ padding:22, background:"rgba(255,255,255,.02)",
+        border:"1px solid rgba(255,255,255,.07)", borderRadius:14 }}>
         <div style={{ fontSize:12, fontWeight:700, color:"#8a9aaa",
           letterSpacing:1, textTransform:"uppercase", marginBottom:16 }}>
           Instrucciones paso a paso
