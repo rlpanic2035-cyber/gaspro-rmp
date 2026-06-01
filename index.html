@@ -107,17 +107,19 @@ const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwACQdYbYBAn0nYQN0oJ
 const getUrl = () => localStorage.getItem("gaspro_script_url") || SCRIPT_URL;
 
 // ─── API ──────────────────────────────────────────────────────────────────────
+// Google Apps Script requiere mode:"no-cors" y body como texto plano para evitar
+// el preflight CORS que bloquea la petición desde páginas externas.
 async function sendToSheets(sheetName, rows) {
   const url = getUrl();
   if (!url) throw new Error("URL no configurada. Ve a ⚙ Configuración.");
-  const res = await fetch(url, {
+  await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    mode: "no-cors",                          // evita el error CORS
+    headers: { "Content-Type": "text/plain" }, // text/plain no genera preflight
     body: JSON.stringify({ sheet: sheetName, rows }),
   });
-  if (!res.ok) throw new Error(`Error HTTP ${res.status}`);
-  const json = await res.json().catch(() => { throw new Error("Respuesta inválida"); });
-  if (json.status !== "ok") throw new Error(json.message || "Error en Apps Script");
+  // Con no-cors la respuesta es opaca (no se puede leer),
+  // si no lanzó excepción significa que llegó al servidor.
 }
 
 // ─── TOAST HOOK ───────────────────────────────────────────────────────────────
