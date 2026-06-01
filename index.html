@@ -6,36 +6,41 @@
 <title>RMP — Gaspro Honduras</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<!-- React + Babel (JSX en navegador, sin build) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.10/babel.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html,body,#root{height:100%}
 body{background:#0b0f17;color:#e8edf3;font-family:'IBM Plex Sans',sans-serif;-webkit-font-smoothing:antialiased}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:3px}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:3px}
 input[type=number]::-webkit-inner-spin-button,
 input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
-select option{background:#151c28}
-@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-.fade-up{animation:fadeUp .3s ease both}
-.toast{position:fixed;bottom:24px;right:24px;z-index:999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;animation:fadeUp .3s ease both;pointer-events:none;max-width:340px}
-.toast-ok  {background:#00d4aa18;border:1px solid #00d4aa60;color:#00d4aa}
-.toast-err {background:#ff6b6b18;border:1px solid #ff6b6b60;color:#ff6b6b}
-.toast-loading{background:#4f9cff18;border:1px solid #4f9cff60;color:#4f9cff;animation:pulse 1s ease infinite}
+select option{background:#151c28;color:#e8edf3}
+@keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.fade-up{animation:fadeUp .25s ease both}
+.toast{
+  position:fixed;bottom:24px;right:24px;z-index:9999;
+  padding:13px 20px;border-radius:10px;font-size:13px;font-weight:600;
+  animation:fadeUp .25s ease both;pointer-events:none;max-width:360px;
+  box-shadow:0 8px 32px rgba(0,0,0,.4);
+}
+.toast-ok      {background:#0d2a23;border:1px solid #00d4aa70;color:#00d4aa}
+.toast-err     {background:#2a0d0d;border:1px solid #ff6b6b70;color:#ff6b6b}
+.toast-loading {background:#0d1a2a;border:1px solid #4f9cff70;color:#4f9cff;animation:pulse 1.2s ease infinite}
 </style>
-<script type="importmap">
-{"imports":{"react":"https://esm.sh/react@18.3.1","react-dom/client":"https://esm.sh/react-dom@18.3.1/client"}}
-</script>
 </head>
 <body>
 <div id="root"></div>
-<script type="module">
-import { useState, useCallback, useEffect } from "react";
-import { createRoot } from "react-dom/client";
-const h = React.createElement;
 
-// ─── DATOS ───────────────────────────────────────────────────────────────────
+<script type="text/babel">
+const { useState, useCallback } = React;
+
+// ─── CONSTANTES ───────────────────────────────────────────────────────────────
 const LOX_GROUPS = [
   { label:"ENVASES INDUSTRIALES", color:"#00d4aa", types:[
     {key:"ind_250M",  label:"250M"},
@@ -65,15 +70,15 @@ const LOX_GROUPS = [
 
 const LIN_GROUPS = [
   { label:"ENVASES INDUSTRIALES", color:"#4f9cff", types:[
-    {key:"ind_250M",       label:"250M"},
-    {key:"ind_300M",       label:"300M"},
-    {key:"ind_200bar",     label:"200 bar"},
-    {key:"ind_125M",       label:"125M"},
-    {key:"ind_55",         label:"55"},
-    {key:"ind_20",         label:"20"},
-    {key:"ind_CilPersonal",label:"Cil. Personal"},
-    {key:"ind_T180",       label:"T180"},
-    {key:"ind_T230",       label:"T230"},
+    {key:"ind_250M",        label:"250M"},
+    {key:"ind_300M",        label:"300M"},
+    {key:"ind_200bar",      label:"200 bar"},
+    {key:"ind_125M",        label:"125M"},
+    {key:"ind_55",          label:"55"},
+    {key:"ind_20",          label:"20"},
+    {key:"ind_CilPersonal", label:"Cil. Personal"},
+    {key:"ind_T180",        label:"T180"},
+    {key:"ind_T230",        label:"T230"},
   ]},
   { label:"ENVASES MEDICINALES", color:"#a78bfa", types:[
     {key:"med_Aire250M", label:"Aire 250M"},
@@ -86,211 +91,220 @@ const LIN_GROUPS = [
 
 const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
                 "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
-const daysInMonth = (m,y) => new Date(y,m,0).getDate();
-const pad = n => String(n).padStart(2,"0");
-const isoDate = (y,m,d) => `${y}-${pad(m)}-${pad(d)}`;
-const today = new Date();
-const todayStr = isoDate(today.getFullYear(), today.getMonth()+1, today.getDate());
-const emptyForm = groups => { const f={}; groups.forEach(g=>g.types.forEach(t=>{f[t.key]=""})); return f; };
-const getUrl = () => localStorage.getItem("gaspro_script_url")||"";
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+const pad       = n => String(n).padStart(2,"0");
+const isoDate   = (y,m,d) => `${y}-${pad(m)}-${pad(d)}`;
+const daysInM   = (m,y) => new Date(y,m,0).getDate();
+const todayObj  = new Date();
+const todayStr  = isoDate(todayObj.getFullYear(), todayObj.getMonth()+1, todayObj.getDate());
+const emptyForm = (groups) => {
+  const f = {};
+  groups.forEach(g => g.types.forEach(t => { f[t.key] = ""; }));
+  return f;
+};
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwACQdYbYBAn0nYQN0oJQoa988_9TetfRg0PPz4OQO7Y2zkcNbtV893UX5pe02yGxaOSQ/exec";
+const getUrl = () => localStorage.getItem("gaspro_script_url") || SCRIPT_URL;
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 async function sendToSheets(sheetName, rows) {
   const url = getUrl();
-  if (!url || url.startsWith("PEGAR")) throw new Error("URL no configurada. Ve a ⚙ Configuración.");
+  if (!url) throw new Error("URL no configurada. Ve a ⚙ Configuración.");
   const res = await fetch(url, {
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sheet: sheetName, rows }),
   });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  let json;
-  try { json = await res.json(); } catch { throw new Error("Respuesta inválida del servidor"); }
+  if (!res.ok) throw new Error(`Error HTTP ${res.status}`);
+  const json = await res.json().catch(() => { throw new Error("Respuesta inválida"); });
   if (json.status !== "ok") throw new Error(json.message || "Error en Apps Script");
 }
 
-// ─── TOAST ────────────────────────────────────────────────────────────────────
-function Toast({msg, type}) {
-  if (!msg) return null;
-  return h("div", {className:`toast toast-${type}`}, msg);
-}
-
+// ─── TOAST HOOK ───────────────────────────────────────────────────────────────
 function useToast() {
   const [toast, setToast] = useState(null);
-  const show = (msg, type, ms=3500) => {
-    setToast({msg,type});
-    if (type !== "loading") setTimeout(()=>setToast(null), ms);
+  const timerRef = React.useRef(null);
+  const show = (msg, type, ms = 3500) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setToast({ msg, type });
+    if (type !== "loading") {
+      timerRef.current = setTimeout(() => setToast(null), ms);
+    }
   };
-  const clear = () => setToast(null);
+  const clear = () => { if (timerRef.current) clearTimeout(timerRef.current); setToast(null); };
   return [toast, show, clear];
 }
 
-// ─── DATE SELECTOR ────────────────────────────────────────────────────────────
-function DateSelector({value, onChange, accentColor}) {
-  const parts = value ? value.split("-").map(Number) : [today.getFullYear(), today.getMonth()+1, today.getDate()];
-  const [y,m,d] = parts;
-  const total = daysInMonth(m,y);
+// ─── TOAST COMPONENT ─────────────────────────────────────────────────────────
+function Toast({ toast }) {
+  if (!toast) return null;
+  return <div className={`toast toast-${toast.type}`}>{toast.msg}</div>;
+}
 
-  const selStyle = {
-    background:"rgba(255,255,255,.06)",
-    border:`1px solid ${accentColor}40`,
-    color:"#e8edf3", borderRadius:8, padding:"8px 12px",
-    fontSize:14, outline:"none", cursor:"pointer", fontFamily:"inherit",
+// ─── DATE SELECTOR ────────────────────────────────────────────────────────────
+function DateSelector({ value, onChange, accentColor }) {
+  const [y, m, d] = (value || todayStr).split("-").map(Number);
+  const total = daysInM(m, y);
+
+  const sel = {
+    background: "rgba(255,255,255,.06)",
+    border: `1px solid ${accentColor}50`,
+    color: "#e8edf3", borderRadius: 8, padding: "8px 12px",
+    fontSize: 14, outline: "none", cursor: "pointer", fontFamily: "inherit",
   };
 
   const update = (field, val) => {
-    const ny = field==="y"?val:y;
-    const nm = field==="m"?val:m;
-    const nd = Math.min(field==="d"?val:d, daysInMonth(nm,ny));
-    onChange(isoDate(ny,nm,nd));
+    const ny = field === "y" ? val : y;
+    const nm = field === "m" ? val : m;
+    const nd = Math.min(field === "d" ? val : d, daysInM(nm, ny));
+    onChange(isoDate(ny, nm, nd));
   };
 
-  return h("div", {style:{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}},
-    h("span",{style:{fontSize:12,color:"#6a7a8a"}},"Fecha:"),
-    h("select",{value:d, style:selStyle, onChange:e=>update("d",+e.target.value)},
-      Array.from({length:total},(_,i)=>h("option",{key:i+1,value:i+1},i+1))),
-    h("select",{value:m, style:selStyle, onChange:e=>update("m",+e.target.value)},
-      MONTHS.map((name,i)=>h("option",{key:i,value:i+1},name))),
-    h("select",{value:y, style:selStyle, onChange:e=>update("y",+e.target.value)},
-      [2024,2025,2026,2027].map(yr=>h("option",{key:yr,value:yr},yr))),
+  return (
+    <div style={{ display:"flex", gap:10, alignItems:"center", flexWrap:"wrap" }}>
+      <span style={{ fontSize:12, color:"#6a7a8a" }}>Fecha:</span>
+      <select style={sel} value={d} onChange={e => update("d", +e.target.value)}>
+        {Array.from({ length: total }, (_, i) => <option key={i+1} value={i+1}>{i+1}</option>)}
+      </select>
+      <select style={sel} value={m} onChange={e => update("m", +e.target.value)}>
+        {MONTHS.map((name, i) => <option key={i} value={i+1}>{name}</option>)}
+      </select>
+      <select style={sel} value={y} onChange={e => update("y", +e.target.value)}>
+        {[2024,2025,2026,2027].map(yr => <option key={yr} value={yr}>{yr}</option>)}
+      </select>
+    </div>
   );
 }
 
-// ─── CYLINDER FIELD ───────────────────────────────────────────────────────────
-function CylField({type, value, onChange, accentColor}) {
+// ─── CYLINDER INPUT ───────────────────────────────────────────────────────────
+function CylField({ type, value, onChange, accentColor }) {
   const has = value !== "" && value !== "0";
-  return h("div",{
-    style:{
-      background: has?`${accentColor}12`:"rgba(255,255,255,.025)",
-      border:`1px solid ${has?accentColor+"45":"rgba(255,255,255,.06)"}`,
-      borderRadius:10, padding:"12px 14px", transition:"all .15s",
-    }},
-    h("label",{style:{
-      fontSize:11, color: has?accentColor:"#5a6a7a",
-      display:"block", marginBottom:8,
-      fontWeight:700, letterSpacing:.5, textTransform:"uppercase",
-    }}, type.label),
-    h("input",{
-      type:"number", min:0, step:type.isGranel?.01:1,
-      placeholder:"0", value,
-      onChange: e=>onChange(type.key, e.target.value),
-      style:{
-        width:"100%", background:"transparent", border:"none",
-        borderBottom:`1px solid ${has?accentColor+"60":"rgba(255,255,255,.1)"}`,
-        color:"#e8edf3", fontSize:22,
-        fontFamily:"'IBM Plex Mono',monospace",
-        padding:"4px 0", outline:"none",
-      },
-    }),
-    type.isGranel && h("div",{style:{fontSize:10,color:"#5a6a7a",marginTop:5}},"en galones"),
+  return (
+    <div style={{
+      background: has ? `${accentColor}14` : "rgba(255,255,255,.025)",
+      border: `1px solid ${has ? accentColor+"55" : "rgba(255,255,255,.07)"}`,
+      borderRadius: 10, padding: "12px 14px", transition: "all .15s",
+    }}>
+      <label style={{
+        fontSize: 11, color: has ? accentColor : "#556070",
+        display: "block", marginBottom: 8,
+        fontWeight: 700, letterSpacing: .5, textTransform: "uppercase",
+      }}>{type.label}</label>
+      <input
+        type="number" min={0} step={type.isGranel ? .01 : 1}
+        placeholder="0" value={value}
+        onChange={e => onChange(type.key, e.target.value)}
+        style={{
+          width: "100%", background: "transparent", border: "none",
+          borderBottom: `1px solid ${has ? accentColor+"70" : "rgba(255,255,255,.12)"}`,
+          color: "#e8edf3", fontSize: 22,
+          fontFamily: "'IBM Plex Mono', monospace",
+          padding: "4px 0", outline: "none",
+        }}
+      />
+      {type.isGranel && <div style={{ fontSize:10, color:"#556070", marginTop:5 }}>en galones</div>}
+    </div>
   );
 }
 
 // ─── SUBMIT BUTTON ────────────────────────────────────────────────────────────
-function SubmitBtn({onClick, loading, color, label}) {
-  return h("button",{
-    onClick, disabled:loading,
-    style:{
-      background: loading?"rgba(255,255,255,.04)":`linear-gradient(135deg,${color}28,${color}12)`,
-      border:`1px solid ${loading?"rgba(255,255,255,.08)":color+"60"}`,
-      color: loading?"#4a5a6a":color,
-      borderRadius:10, padding:"13px 28px",
-      fontSize:14, fontWeight:700,
-      cursor: loading?"default":"pointer",
-      letterSpacing:.4, transition:"all .2s",
-      display:"flex", alignItems:"center", gap:8, fontFamily:"inherit",
-    }},
-    loading
-      ? h("span",{style:{animation:"pulse 1s infinite"}},"Enviando…")
-      : h("span",null,`↑ Enviar ${label} a Google Sheets`)
+function SubmitBtn({ onClick, loading, color, label }) {
+  return (
+    <button onClick={onClick} disabled={loading} style={{
+      background: loading ? "rgba(255,255,255,.03)" : `linear-gradient(135deg,${color}30,${color}14)`,
+      border: `1px solid ${loading ? "rgba(255,255,255,.08)" : color+"65"}`,
+      color: loading ? "#4a5a6a" : color,
+      borderRadius: 10, padding: "13px 28px",
+      fontSize: 14, fontWeight: 700,
+      cursor: loading ? "default" : "pointer",
+      letterSpacing: .4, transition: "all .2s",
+      display: "flex", alignItems: "center", gap: 8, fontFamily: "inherit",
+    }}>
+      {loading
+        ? <span style={{ animation:"pulse 1s infinite" }}>Enviando…</span>
+        : <span>↑ Enviar {label} a Google Sheets</span>
+      }
+    </button>
   );
 }
 
-// ─── GAS FORM ─────────────────────────────────────────────────────────────────
-function GasForm({gasName, groups, sheetName, accentColor}) {
-  const [date,  setDate]  = useState(todayStr);
-  const [form,  setForm]  = useState(()=>emptyForm(groups));
+// ─── GAS FORM (LOX / LIN) ────────────────────────────────────────────────────
+function GasForm({ gasName, groups, sheetName, accentColor }) {
+  const [date,    setDate]    = useState(todayStr);
+  const [form,    setForm]    = useState(() => emptyForm(groups));
   const [loading, setLoading] = useState(false);
   const [toast, showToast, clearToast] = useToast();
 
-  const handleChange = useCallback((key,val) => {
-    setForm(f=>({...f,[key]:val}));
-  },[]);
+  const handleChange = useCallback((key, val) => {
+    setForm(f => ({ ...f, [key]: val }));
+  }, []);
 
   const handleSubmit = async () => {
     const ts = new Date().toISOString();
     const rows = [];
-    groups.forEach(g => {
+    groups.forEach(g =>
       g.types.forEach(t => {
         const v = form[t.key];
-        if (v !== "" && v !== "0" && v !== null) {
-          rows.push([ts, date, gasName, g.label, t.label, parseFloat(v)||0]);
-        }
-      });
-    });
-
-    if (!rows.length) { showToast("⚠ No hay datos ingresados.","err"); return; }
-
+        if (v !== "" && v !== "0") rows.push([ts, date, gasName, g.label, t.label, parseFloat(v)||0]);
+      })
+    );
+    if (!rows.length) { showToast("⚠ No hay datos ingresados.", "err"); return; }
     setLoading(true);
-    showToast("Enviando datos…","loading");
+    showToast("Enviando datos…", "loading");
     try {
       await sendToSheets(sheetName, rows);
       clearToast();
-      showToast(`✓ ${rows.length} filas enviadas — ${date}`,"ok");
+      showToast(`✓ ${rows.length} registros enviados (${date})`, "ok");
       setForm(emptyForm(groups));
     } catch(e) {
       clearToast();
-      showToast(`✗ ${e.message}`,"err",6000);
+      showToast(`✗ ${e.message}`, "err", 6000);
     } finally { setLoading(false); }
   };
 
-  return h("div",{className:"fade-up"},
-    // Header row
-    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",
-      marginBottom:28,flexWrap:"wrap",gap:16}},
-      h("div",null,
-        h("h1",{style:{fontSize:24,fontWeight:800,color:accentColor,marginBottom:6}},
-          gasName==="LOX"?"Oxígeno Líquido (O₂)":"Nitrógeno Líquido (N₂)"),
-        h("p",{style:{fontSize:13,color:"#5a6a7a"}},
-          "Solo se enviarán los campos con valor mayor a 0."),
-      ),
-      h(DateSelector,{value:date, onChange:setDate, accentColor}),
-    ),
+  return (
+    <div className="fade-up">
+      {/* Header */}
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start",
+        marginBottom:28, flexWrap:"wrap", gap:16 }}>
+        <div>
+          <h1 style={{ fontSize:24, fontWeight:800, color:accentColor, marginBottom:6 }}>
+            {gasName === "LOX" ? "Oxígeno Líquido (O₂)" : "Nitrógeno Líquido (N₂)"}
+          </h1>
+          <p style={{ fontSize:13, color:"#556070" }}>
+            Ingrese las cantidades del día. Solo se enviarán campos con valor mayor a 0.
+          </p>
+        </div>
+        <DateSelector value={date} onChange={setDate} accentColor={accentColor} />
+      </div>
 
-    // Groups
-    groups.map(group =>
-      h("div",{key:group.label, style:{marginBottom:28}},
-        h("div",{style:{
-          fontSize:11,fontWeight:700,color:group.color,letterSpacing:2,
-          textTransform:"uppercase",marginBottom:14,
-          display:"flex",alignItems:"center",gap:10,
-        }},
-          h("div",{style:{width:3,height:14,background:group.color,borderRadius:2}}),
-          group.label,
-        ),
-        h("div",{style:{
-          display:"grid",
-          gridTemplateColumns:"repeat(auto-fill,minmax(118px,1fr))",
-          gap:10,
-        }},
-          group.types.map(type =>
-            h(CylField,{key:type.key, type, value:form[type.key],
-              onChange:handleChange, accentColor:group.color})
-          )
-        )
-      )
-    ),
+      {/* Groups */}
+      {groups.map(group => (
+        <div key={group.label} style={{ marginBottom:28 }}>
+          <div style={{ fontSize:11, fontWeight:700, color:group.color, letterSpacing:2,
+            textTransform:"uppercase", marginBottom:14,
+            display:"flex", alignItems:"center", gap:10 }}>
+            <div style={{ width:3, height:14, background:group.color, borderRadius:2 }} />
+            {group.label}
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(116px,1fr))", gap:10 }}>
+            {group.types.map(type => (
+              <CylField key={type.key} type={type}
+                value={form[type.key]} onChange={handleChange} accentColor={group.color} />
+            ))}
+          </div>
+        </div>
+      ))}
 
-    // Footer
-    h("div",{style:{
-      marginTop:32, paddingTop:24,
-      borderTop:"1px solid rgba(255,255,255,.07)",
-      display:"flex",justifyContent:"flex-end",
-    }},
-      h(SubmitBtn,{onClick:handleSubmit, loading, color:accentColor, label:gasName})
-    ),
+      {/* Footer */}
+      <div style={{ marginTop:32, paddingTop:24,
+        borderTop:"1px solid rgba(255,255,255,.07)",
+        display:"flex", justifyContent:"flex-end" }}>
+        <SubmitBtn onClick={handleSubmit} loading={loading} color={accentColor} label={gasName} />
+      </div>
 
-    toast && h(Toast,{msg:toast.msg, type:toast.type}),
+      <Toast toast={toast} />
+    </div>
   );
 }
 
@@ -305,261 +319,231 @@ function DescargasForm() {
   const [loading,  setLoading] = useState(false);
   const [toast, showToast, clearToast] = useToast();
 
-  const FieldBox = ({label, val, setVal, placeholder, type="number", color}) =>
-    h("div",{style:{
-      background: val?`${color}12`:"rgba(255,255,255,.025)",
-      border:`1px solid ${val?color+"45":"rgba(255,255,255,.06)"}`,
-      borderRadius:10, padding:"14px 16px", flex:1, minWidth:150,
-      transition:"all .15s",
-    }},
-      h("label",{style:{
-        fontSize:11,color:val?color:"#5a6a7a",display:"block",
-        marginBottom:8,fontWeight:700,letterSpacing:.5,textTransform:"uppercase",
-      }},label),
-      h("input",{
-        type, value:val, placeholder,
-        min:type==="number"?0:undefined,
-        onChange:e=>setVal(e.target.value),
-        style:{
-          width:"100%",background:"transparent",border:"none",
-          borderBottom:`1px solid ${val?color+"60":"rgba(255,255,255,.1)"}`,
-          color:"#e8edf3",fontSize:20,
-          fontFamily:"'IBM Plex Mono',monospace",
-          padding:"4px 0",outline:"none",
-        },
-      })
-    );
-
   const handleSubmit = async () => {
-    const rows = [];
     const ts = new Date().toISOString();
+    const rows = [];
     if (loxDesc || loxDecl)
       rows.push([ts, date, "LOX", parseFloat(loxDesc)||0, parseFloat(loxDecl)||0, loxLugar||""]);
     if (linDesc || linDecl)
       rows.push([ts, date, "LIN", parseFloat(linDesc)||0, parseFloat(linDecl)||0, ""]);
-
-    if (!rows.length) { showToast("⚠ No hay datos de descarga.","err"); return; }
-
+    if (!rows.length) { showToast("⚠ No hay datos de descarga.", "err"); return; }
     setLoading(true);
-    showToast("Enviando…","loading");
+    showToast("Enviando…", "loading");
     try {
       await sendToSheets("DESCARGAS", rows);
       clearToast();
-      showToast(`✓ Descarga del ${date} enviada.`,"ok");
-      setLoxDesc(""); setLoxDecl(""); setLoxLugar("");
-      setLinDesc(""); setLinDecl("");
+      showToast(`✓ Descarga del ${date} enviada.`, "ok");
+      setLoxDesc(""); setLoxDecl(""); setLoxLugar(""); setLinDesc(""); setLinDecl("");
     } catch(e) {
       clearToast();
-      showToast(`✗ ${e.message}`,"err",6000);
+      showToast(`✗ ${e.message}`, "err", 6000);
     } finally { setLoading(false); }
   };
 
-  const Divider = ({label,color}) => h("div",{style:{
-    fontSize:11,fontWeight:700,color,letterSpacing:2,
-    textTransform:"uppercase",marginBottom:14,
-    display:"flex",alignItems:"center",gap:10,
-  }},
-    h("div",{style:{width:3,height:14,background:color,borderRadius:2}}),
-    label,
+  const FieldBox = ({ label, val, setVal, placeholder, type="number", color }) => (
+    <div style={{
+      background: val ? `${color}14` : "rgba(255,255,255,.025)",
+      border: `1px solid ${val ? color+"55" : "rgba(255,255,255,.07)"}`,
+      borderRadius: 10, padding: "14px 16px", flex:1, minWidth:150, transition:"all .15s",
+    }}>
+      <label style={{ fontSize:11, color: val?color:"#556070", display:"block",
+        marginBottom:8, fontWeight:700, letterSpacing:.5, textTransform:"uppercase" }}>
+        {label}
+      </label>
+      <input type={type} value={val} placeholder={placeholder}
+        min={type==="number"?0:undefined}
+        onChange={e => setVal(e.target.value)}
+        style={{
+          width:"100%", background:"transparent", border:"none",
+          borderBottom:`1px solid ${val?color+"70":"rgba(255,255,255,.12)"}`,
+          color:"#e8edf3", fontSize:20, fontFamily:"'IBM Plex Mono',monospace",
+          padding:"4px 0", outline:"none",
+        }}
+      />
+    </div>
   );
 
-  return h("div",{className:"fade-up"},
-    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",
-      marginBottom:28,flexWrap:"wrap",gap:16}},
-      h("div",null,
-        h("h1",{style:{fontSize:24,fontWeight:800,color:"#f5a623",marginBottom:6}},"Registro de Descargas"),
-        h("p",{style:{fontSize:13,color:"#5a6a7a"}},"Registre la descarga del camión-cisterna."),
-      ),
-      h(DateSelector,{value:date,onChange:setDate,accentColor:"#f5a623"}),
-    ),
+  const SectionBar = ({ label, color }) => (
+    <div style={{ fontSize:11, fontWeight:700, color, letterSpacing:2,
+      textTransform:"uppercase", marginBottom:14,
+      display:"flex", alignItems:"center", gap:10 }}>
+      <div style={{ width:3, height:14, background:color, borderRadius:2 }} />
+      {label}
+    </div>
+  );
 
-    h("div",{style:{marginBottom:28}},
-      h(Divider,{label:"Oxígeno Líquido — LOX", color:"#00d4aa"}),
-      h("div",{style:{display:"flex",gap:12,flexWrap:"wrap"}},
-        h(FieldBox,{label:"Descarga (lbs)", val:loxDesc, setVal:setLoxDesc, placeholder:"0", color:"#00d4aa"}),
-        h(FieldBox,{label:"Declarado (lbs)", val:loxDecl, setVal:setLoxDecl, placeholder:"0", color:"#00d4aa"}),
-        h(FieldBox,{label:"Lugar de descarga", val:loxLugar, setVal:setLoxLugar, placeholder:"AED…", type:"text", color:"#00d4aa"}),
-      )
-    ),
+  return (
+    <div className="fade-up">
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start",
+        marginBottom:28, flexWrap:"wrap", gap:16 }}>
+        <div>
+          <h1 style={{ fontSize:24, fontWeight:800, color:"#f5a623", marginBottom:6 }}>
+            Registro de Descargas
+          </h1>
+          <p style={{ fontSize:13, color:"#556070" }}>Registre la descarga del camión-cisterna.</p>
+        </div>
+        <DateSelector value={date} onChange={setDate} accentColor="#f5a623" />
+      </div>
 
-    h("div",{style:{marginBottom:28}},
-      h(Divider,{label:"Nitrógeno Líquido — LIN", color:"#4f9cff"}),
-      h("div",{style:{display:"flex",gap:12,flexWrap:"wrap"}},
-        h(FieldBox,{label:"Descarga (lbs)", val:linDesc, setVal:setLinDesc, placeholder:"0", color:"#4f9cff"}),
-        h(FieldBox,{label:"Declarado (lbs)", val:linDecl, setVal:setLinDecl, placeholder:"0", color:"#4f9cff"}),
-      )
-    ),
+      <div style={{ marginBottom:28 }}>
+        <SectionBar label="Oxígeno Líquido — LOX" color="#00d4aa" />
+        <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
+          <FieldBox label="Descarga (lbs)" val={loxDesc} setVal={setLoxDesc} placeholder="0" color="#00d4aa" />
+          <FieldBox label="Declarado (lbs)" val={loxDecl} setVal={setLoxDecl} placeholder="0" color="#00d4aa" />
+          <FieldBox label="Lugar de descarga" val={loxLugar} setVal={setLoxLugar} placeholder="AED…" type="text" color="#00d4aa" />
+        </div>
+      </div>
 
-    h("div",{style:{
-      marginTop:32,paddingTop:24,
-      borderTop:"1px solid rgba(255,255,255,.07)",
-      display:"flex",justifyContent:"flex-end",
-    }},
-      h(SubmitBtn,{onClick:handleSubmit,loading,color:"#f5a623",label:"Descarga"})
-    ),
+      <div style={{ marginBottom:28 }}>
+        <SectionBar label="Nitrógeno Líquido — LIN" color="#4f9cff" />
+        <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
+          <FieldBox label="Descarga (lbs)" val={linDesc} setVal={setLinDesc} placeholder="0" color="#4f9cff" />
+          <FieldBox label="Declarado (lbs)" val={linDecl} setVal={setLinDecl} placeholder="0" color="#4f9cff" />
+        </div>
+      </div>
 
-    toast && h(Toast,{msg:toast.msg,type:toast.type}),
+      <div style={{ marginTop:32, paddingTop:24,
+        borderTop:"1px solid rgba(255,255,255,.07)",
+        display:"flex", justifyContent:"flex-end" }}>
+        <SubmitBtn onClick={handleSubmit} loading={loading} color="#f5a623" label="Descarga" />
+      </div>
+      <Toast toast={toast} />
+    </div>
   );
 }
 
 // ─── CONFIG ───────────────────────────────────────────────────────────────────
 function ConfigView() {
-  const [url,   setUrl]   = useState(()=>getUrl());
+  const [url,   setUrl]   = useState(() => getUrl());
   const [saved, setSaved] = useState(false);
 
   const save = () => {
     localStorage.setItem("gaspro_script_url", url.trim());
     setSaved(true);
-    setTimeout(()=>setSaved(false), 2500);
+    setTimeout(() => setSaved(false), 2500);
   };
 
   const steps = [
     "1. Abre tu Google Sheet → Extensiones → Apps Script.",
-    "2. Pega el código del archivo apps_script.gs y guarda.",
-    "3. Implementar → Nueva implementación → Tipo: Aplicación web.",
-    "4. Ejecutar como: Yo  ·  Acceso: Cualquier usuario.",
-    "5. Autoriza los permisos cuando Google lo solicite.",
-    "6. Copia la URL /exec generada y pégala arriba.",
+    "2. Elimina el código existente y pega el contenido de apps_script.gs.",
+    "3. Guarda el proyecto (ícono 💾 o Ctrl+S).",
+    "4. Implementar → Nueva implementación → Tipo: Aplicación web.",
+    "5. Ejecutar como: Yo  ·  Quién tiene acceso: Cualquier usuario.",
+    "6. Haz clic en Implementar y autoriza los permisos.",
+    "7. Copia la URL que termina en /exec y pégala arriba.",
   ];
 
-  return h("div",{className:"fade-up",style:{maxWidth:700}},
-    h("h1",{style:{fontSize:24,fontWeight:800,color:"#c084fc",marginBottom:8}},"Configuración"),
-    h("p",{style:{fontSize:14,color:"#5a6a7a",marginBottom:32,lineHeight:1.6}},
-      "Conecta la app a tu Google Sheet mediante un Apps Script publicado como Web App."),
+  return (
+    <div className="fade-up" style={{ maxWidth:680 }}>
+      <h1 style={{ fontSize:24, fontWeight:800, color:"#c084fc", marginBottom:8 }}>Configuración</h1>
+      <p style={{ fontSize:14, color:"#556070", marginBottom:32, lineHeight:1.6 }}>
+        Conecta la app a tu Google Sheet publicando un Apps Script como Web App.
+      </p>
 
-    h("div",{style:{marginBottom:24}},
-      h("label",{style:{
-        fontSize:12,color:"#8a9aaa",fontWeight:700,
-        letterSpacing:1,textTransform:"uppercase",
-        display:"block",marginBottom:10,
-      }},"URL del Google Apps Script"),
-      h("input",{
-        type:"text", value:url, placeholder:"https://script.google.com/macros/s/…/exec",
-        onChange:e=>setUrl(e.target.value),
-        style:{
-          width:"100%",background:"rgba(255,255,255,.04)",
-          border:"1px solid rgba(192,132,252,.35)",borderRadius:10,
-          color:"#e8edf3",fontSize:13,padding:"14px 16px",
-          outline:"none",fontFamily:"'IBM Plex Mono',monospace",
-        },
-      })
-    ),
+      <div style={{ marginBottom:24 }}>
+        <label style={{ fontSize:12, color:"#8a9aaa", fontWeight:700,
+          letterSpacing:1, textTransform:"uppercase", display:"block", marginBottom:10 }}>
+          URL del Google Apps Script
+        </label>
+        <input type="text" value={url}
+          placeholder="https://script.google.com/macros/s/…/exec"
+          onChange={e => setUrl(e.target.value)}
+          style={{
+            width:"100%", background:"rgba(255,255,255,.04)",
+            border:"1px solid rgba(192,132,252,.35)", borderRadius:10,
+            color:"#e8edf3", fontSize:13, padding:"14px 16px",
+            outline:"none", fontFamily:"'IBM Plex Mono',monospace",
+          }}
+        />
+      </div>
 
-    h("button",{
-      onClick:save,
-      style:{
-        background: saved?"rgba(0,212,170,.15)":"linear-gradient(135deg,#c084fc28,#c084fc12)",
-        border:`1px solid ${saved?"#00d4aa60":"#c084fc60"}`,
-        color: saved?"#00d4aa":"#c084fc",
-        borderRadius:10,padding:"12px 24px",
-        fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
-      }
-    }, saved?"✓ Guardado":"Guardar URL"),
+      <button onClick={save} style={{
+        background: saved ? "rgba(0,212,170,.15)" : "linear-gradient(135deg,#c084fc28,#c084fc12)",
+        border: `1px solid ${saved ? "#00d4aa60" : "#c084fc60"}`,
+        color: saved ? "#00d4aa" : "#c084fc",
+        borderRadius:10, padding:"12px 24px",
+        fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"inherit",
+      }}>
+        {saved ? "✓ Guardado" : "Guardar URL"}
+      </button>
 
-    h("div",{style:{
-      marginTop:40,padding:22,
-      background:"rgba(255,255,255,.02)",
-      border:"1px solid rgba(255,255,255,.07)",
-      borderRadius:14,
-    }},
-      h("div",{style:{
-        fontSize:12,fontWeight:700,color:"#8a9aaa",
-        letterSpacing:1,textTransform:"uppercase",marginBottom:16,
-      }},"Cómo configurar el Apps Script"),
-      steps.map((s,i)=>h("div",{key:i,
-        style:{fontSize:13,color:"#5a6a7a",marginBottom:10,lineHeight:1.6}}, s)),
-
-      h("div",{style:{
-        marginTop:20,padding:14,
-        background:"rgba(192,132,252,.08)",
-        border:"1px solid rgba(192,132,252,.2)",
-        borderRadius:10,fontSize:12,color:"#b0a0c0",lineHeight:1.6,
-      }},
-        "⚠ Importante: El Google Sheet debe tener tres pestañas llamadas exactamente ",
-        h("code",{style:{background:"rgba(255,255,255,.06)",padding:"1px 6px",borderRadius:4,fontFamily:"monospace"}},"LOX"),
-        ", ",
-        h("code",{style:{background:"rgba(255,255,255,.06)",padding:"1px 6px",borderRadius:4,fontFamily:"monospace"}},"LIN"),
-        " y ",
-        h("code",{style:{background:"rgba(255,255,255,.06)",padding:"1px 6px",borderRadius:4,fontFamily:"monospace"}},"DESCARGAS"),
-        ". La primera fila de cada pestaña debe contener los encabezados.",
-      )
-    )
+      <div style={{ marginTop:40, padding:22,
+        background:"rgba(255,255,255,.02)", border:"1px solid rgba(255,255,255,.07)", borderRadius:14 }}>
+        <div style={{ fontSize:12, fontWeight:700, color:"#8a9aaa",
+          letterSpacing:1, textTransform:"uppercase", marginBottom:16 }}>
+          Instrucciones paso a paso
+        </div>
+        {steps.map((s,i) => (
+          <div key={i} style={{ fontSize:13, color:"#556070", marginBottom:10, lineHeight:1.6 }}>{s}</div>
+        ))}
+        <div style={{ marginTop:20, padding:14, background:"rgba(192,132,252,.08)",
+          border:"1px solid rgba(192,132,252,.2)", borderRadius:10,
+          fontSize:12, color:"#b0a0c0", lineHeight:1.7 }}>
+          ⚠ El Google Sheet debe tener 3 pestañas con estos nombres exactos:&nbsp;
+          <code style={{ background:"rgba(255,255,255,.06)", padding:"1px 6px", borderRadius:4 }}>LOX</code>,&nbsp;
+          <code style={{ background:"rgba(255,255,255,.06)", padding:"1px 6px", borderRadius:4 }}>LIN</code> y&nbsp;
+          <code style={{ background:"rgba(255,255,255,.06)", padding:"1px 6px", borderRadius:4 }}>DESCARGAS</code>.
+        </div>
+      </div>
+    </div>
   );
 }
 
 // ─── APP ROOT ─────────────────────────────────────────────────────────────────
 function App() {
   const [tab, setTab] = useState("LOX");
-
-  const noUrl = !getUrl();
-
   const tabs = [
-    {id:"LOX",       label:"O₂ Oxígeno",  color:"#00d4aa"},
-    {id:"LIN",       label:"N₂ Nitrógeno",color:"#4f9cff"},
-    {id:"DESCARGAS", label:"Descargas",   color:"#f5a623"},
-    {id:"CONFIG",    label:"⚙",           color:"#c084fc"},
+    { id:"LOX",       label:"O₂ Oxígeno",   color:"#00d4aa" },
+    { id:"LIN",       label:"N₂ Nitrógeno",  color:"#4f9cff" },
+    { id:"DESCARGAS", label:"Descargas",     color:"#f5a623" },
+    { id:"CONFIG",    label:"⚙",             color:"#c084fc" },
   ];
 
-  return h("div",{style:{display:"flex",flexDirection:"column",minHeight:"100vh"}},
+  return (
+    <div style={{ display:"flex", flexDirection:"column", minHeight:"100vh" }}>
+      {/* Header */}
+      <header style={{ background:"rgba(255,255,255,.018)",
+        borderBottom:"1px solid rgba(255,255,255,.06)",
+        padding:"14px 24px", display:"flex", alignItems:"center", gap:14 }}>
+        <div style={{ background:"linear-gradient(135deg,#00d4aa,#4f9cff)",
+          borderRadius:10, width:38, height:38, flexShrink:0,
+          display:"flex", alignItems:"center", justifyContent:"center",
+          fontSize:17, fontWeight:900, color:"#0b0f17" }}>G</div>
+        <div>
+          <div style={{ fontSize:15, fontWeight:800, letterSpacing:.3 }}>GASPRO HONDURAS S.A.</div>
+          <div style={{ fontSize:11, color:"#556070", letterSpacing:1 }}>REGISTRO MENSUAL DE PRODUCCIÓN</div>
+        </div>
 
-    h("header",{style:{
-      background:"rgba(255,255,255,.015)",
-      borderBottom:"1px solid rgba(255,255,255,.06)",
-      padding:"14px 24px",
-      display:"flex",alignItems:"center",gap:14,
-    }},
-      h("div",{style:{
-        background:"linear-gradient(135deg,#00d4aa,#4f9cff)",
-        borderRadius:10,width:38,height:38,flexShrink:0,
-        display:"flex",alignItems:"center",justifyContent:"center",
-        fontSize:17,fontWeight:900,color:"#0b0f17",
-      }},"G"),
-      h("div",null,
-        h("div",{style:{fontSize:15,fontWeight:800,letterSpacing:.3}},
-          "GASPRO HONDURAS S.A."),
-        h("div",{style:{fontSize:11,color:"#5a6a7a",letterSpacing:1}},
-          "REGISTRO MENSUAL DE PRODUCCIÓN"),
-      ),
-      noUrl && h("div",{
-        style:{
-          marginLeft:"auto",background:"#f5a62318",
-          border:"1px solid #f5a62345",color:"#f5a623",
-          borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,
-          cursor:"pointer",
-        },
-        onClick:()=>setTab("CONFIG"),
-      },"⚠ Configura la URL de Apps Script"),
-    ),
+      </header>
 
-    h("nav",{style:{
-      borderBottom:"1px solid rgba(255,255,255,.06)",
-      padding:"0 20px",display:"flex",
-      background:"rgba(255,255,255,.01)",
-    }},
-      tabs.map(t=>h("button",{
-        key:t.id, onClick:()=>setTab(t.id),
-        style:{
-          background:"transparent",border:"none",
-          color: tab===t.id?t.color:"#5a6a7a",
-          fontSize: t.id==="CONFIG"?18:13,
-          fontWeight: tab===t.id?700:500,
-          padding:"13px 18px",cursor:"pointer",
-          borderBottom:`2px solid ${tab===t.id?t.color:"transparent"}`,
-          transition:"all .15s",fontFamily:"inherit",letterSpacing:.3,
-        }
-      },t.label))
-    ),
+      {/* Tabs */}
+      <nav style={{ borderBottom:"1px solid rgba(255,255,255,.06)",
+        padding:"0 20px", display:"flex", background:"rgba(255,255,255,.01)" }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            background:"transparent", border:"none",
+            color: tab===t.id ? t.color : "#556070",
+            fontSize: t.id==="CONFIG" ? 18 : 13,
+            fontWeight: tab===t.id ? 700 : 500,
+            padding:"13px 18px", cursor:"pointer",
+            borderBottom: `2px solid ${tab===t.id ? t.color : "transparent"}`,
+            transition:"all .15s", fontFamily:"inherit", letterSpacing:.3,
+          }}>{t.label}</button>
+        ))}
+      </nav>
 
-    h("main",{style:{flex:1,overflowY:"auto",padding:"28px 24px"}},
-      tab==="LOX"       && h(GasForm,{key:"lox",gasName:"LOX",groups:LOX_GROUPS,sheetName:"LOX",accentColor:"#00d4aa"}),
-      tab==="LIN"       && h(GasForm,{key:"lin",gasName:"LIN",groups:LIN_GROUPS,sheetName:"LIN",accentColor:"#4f9cff"}),
-      tab==="DESCARGAS" && h(DescargasForm,{key:"desc"}),
-      tab==="CONFIG"    && h(ConfigView,{key:"cfg"}),
-    ),
+      {/* Content */}
+      <main style={{ flex:1, overflowY:"auto", padding:"28px 24px" }}>
+        {tab==="LOX"       && <GasForm key="lox" gasName="LOX" groups={LOX_GROUPS} sheetName="LOX" accentColor="#00d4aa" />}
+        {tab==="LIN"       && <GasForm key="lin" gasName="LIN" groups={LIN_GROUPS} sheetName="LIN" accentColor="#4f9cff" />}
+        {tab==="DESCARGAS" && <DescargasForm key="desc" />}
+        {tab==="CONFIG"    && <ConfigView key="cfg" />}
+      </main>
+    </div>
   );
 }
 
-createRoot(document.getElementById("root")).render(h(App));
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
 </script>
 </body>
 </html>
