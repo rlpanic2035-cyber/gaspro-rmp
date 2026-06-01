@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>RMP — Gaspro Honduras</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=IBM+Plex+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%}
+body{background:#0b0f17;color:#e8edf3;font-family:'IBM Plex Sans',sans-serif;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.1);border-radius:3px}
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none}
+select option{background:#151c28}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.fade-up{animation:fadeUp .3s ease both}
+.toast{position:fixed;bottom:24px;right:24px;z-index:999;padding:12px 20px;border-radius:10px;font-size:13px;font-weight:600;animation:fadeUp .3s ease both;pointer-events:none;max-width:340px}
+.toast-ok  {background:#00d4aa18;border:1px solid #00d4aa60;color:#00d4aa}
+.toast-err {background:#ff6b6b18;border:1px solid #ff6b6b60;color:#ff6b6b}
+.toast-loading{background:#4f9cff18;border:1px solid #4f9cff60;color:#4f9cff;animation:pulse 1s ease infinite}
+</style>
+<script type="importmap">
+{"imports":{"react":"https://esm.sh/react@18.3.1","react-dom/client":"https://esm.sh/react-dom@18.3.1/client"}}
+</script>
+</head>
+<body>
+<div id="root"></div>
+<script type="module">
+import { useState, useCallback, useEffect } from "react";
+import { createRoot } from "react-dom/client";
+const h = React.createElement;
+
+// ─── DATOS ───────────────────────────────────────────────────────────────────
+const LOX_GROUPS = [
+  { label:"ENVASES INDUSTRIALES", color:"#00d4aa", types:[
+    {key:"ind_250M",  label:"250M"},
+    {key:"ind_125M",  label:"125M"},
+    {key:"ind_55",    label:"55"},
+    {key:"ind_20",    label:"20"},
+    {key:"ind_300PC", label:"300PC"},
+    {key:"ind_T180",  label:"T180"},
+    {key:"ind_T230",  label:"T230"},
+  ]},
+  { label:"ENVASES MEDICINALES", color:"#4fc3f7", types:[
+    {key:"med_250M",  label:"250M"},
+    {key:"med_300PC", label:"300PC"},
+    {key:"med_125M",  label:"125M"},
+    {key:"med_110",   label:"110"},
+    {key:"med_E24PC", label:"E (24PC)"},
+    {key:"med_D12PC", label:"D (12PC)"},
+    {key:"med_T180",  label:"T180"},
+    {key:"med_T230",  label:"T230"},
+  ]},
+  { label:"OTROS / GRANEL", color:"#fbbf24", types:[
+    {key:"otro_Aire250M",  label:"Aire 250M"},
+    {key:"granel_IND_gal", label:"Granel IND (gal)", isGranel:true},
+    {key:"granel_MED_gal", label:"Granel MED (gal)", isGranel:true},
+  ]},
+];
+
+const LIN_GROUPS = [
+  { label:"ENVASES INDUSTRIALES", color:"#4f9cff", types:[
+    {key:"ind_250M",       label:"250M"},
+    {key:"ind_300M",       label:"300M"},
+    {key:"ind_200bar",     label:"200 bar"},
+    {key:"ind_125M",       label:"125M"},
+    {key:"ind_55",         label:"55"},
+    {key:"ind_20",         label:"20"},
+    {key:"ind_CilPersonal",label:"Cil. Personal"},
+    {key:"ind_T180",       label:"T180"},
+    {key:"ind_T230",       label:"T230"},
+  ]},
+  { label:"ENVASES MEDICINALES", color:"#a78bfa", types:[
+    {key:"med_Aire250M", label:"Aire 250M"},
+    {key:"med_OTRO",     label:"OTRO"},
+  ]},
+  { label:"GRANEL", color:"#fbbf24", types:[
+    {key:"granel_IND_gal", label:"Granel IND (gal)", isGranel:true},
+  ]},
+];
+
+const MONTHS = ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
+                "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+const daysInMonth = (m,y) => new Date(y,m,0).getDate();
+const pad = n => String(n).padStart(2,"0");
+const isoDate = (y,m,d) => `${y}-${pad(m)}-${pad(d)}`;
+const today = new Date();
+const todayStr = isoDate(today.getFullYear(), today.getMonth()+1, today.getDate());
+const emptyForm = groups => { const f={}; groups.forEach(g=>g.types.forEach(t=>{f[t.key]=""})); return f; };
+const getUrl = () => localStorage.getItem("gaspro_script_url")||"";
+
+// ─── API ──────────────────────────────────────────────────────────────────────
+async function sendToSheets(sheetName, rows) {
+  const url = getUrl();
+  if (!url || url.startsWith("PEGAR")) throw new Error("URL no configurada. Ve a ⚙ Configuración.");
+  const res = await fetch(url, {
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({ sheet: sheetName, rows }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  let json;
+  try { json = await res.json(); } catch { throw new Error("Respuesta inválida del servidor"); }
+  if (json.status !== "ok") throw new Error(json.message || "Error en Apps Script");
+}
+
+// ─── TOAST ────────────────────────────────────────────────────────────────────
+function Toast({msg, type}) {
+  if (!msg) return null;
+  return h("div", {className:`toast toast-${type}`}, msg);
+}
+
+function useToast() {
+  const [toast, setToast] = useState(null);
+  const show = (msg, type, ms=3500) => {
+    setToast({msg,type});
+    if (type !== "loading") setTimeout(()=>setToast(null), ms);
+  };
+  const clear = () => setToast(null);
+  return [toast, show, clear];
+}
+
+// ─── DATE SELECTOR ────────────────────────────────────────────────────────────
+function DateSelector({value, onChange, accentColor}) {
+  const parts = value ? value.split("-").map(Number) : [today.getFullYear(), today.getMonth()+1, today.getDate()];
+  const [y,m,d] = parts;
+  const total = daysInMonth(m,y);
+
+  const selStyle = {
+    background:"rgba(255,255,255,.06)",
+    border:`1px solid ${accentColor}40`,
+    color:"#e8edf3", borderRadius:8, padding:"8px 12px",
+    fontSize:14, outline:"none", cursor:"pointer", fontFamily:"inherit",
+  };
+
+  const update = (field, val) => {
+    const ny = field==="y"?val:y;
+    const nm = field==="m"?val:m;
+    const nd = Math.min(field==="d"?val:d, daysInMonth(nm,ny));
+    onChange(isoDate(ny,nm,nd));
+  };
+
+  return h("div", {style:{display:"flex",gap:10,alignItems:"center",flexWrap:"wrap"}},
+    h("span",{style:{fontSize:12,color:"#6a7a8a"}},"Fecha:"),
+    h("select",{value:d, style:selStyle, onChange:e=>update("d",+e.target.value)},
+      Array.from({length:total},(_,i)=>h("option",{key:i+1,value:i+1},i+1))),
+    h("select",{value:m, style:selStyle, onChange:e=>update("m",+e.target.value)},
+      MONTHS.map((name,i)=>h("option",{key:i,value:i+1},name))),
+    h("select",{value:y, style:selStyle, onChange:e=>update("y",+e.target.value)},
+      [2024,2025,2026,2027].map(yr=>h("option",{key:yr,value:yr},yr))),
+  );
+}
+
+// ─── CYLINDER FIELD ───────────────────────────────────────────────────────────
+function CylField({type, value, onChange, accentColor}) {
+  const has = value !== "" && value !== "0";
+  return h("div",{
+    style:{
+      background: has?`${accentColor}12`:"rgba(255,255,255,.025)",
+      border:`1px solid ${has?accentColor+"45":"rgba(255,255,255,.06)"}`,
+      borderRadius:10, padding:"12px 14px", transition:"all .15s",
+    }},
+    h("label",{style:{
+      fontSize:11, color: has?accentColor:"#5a6a7a",
+      display:"block", marginBottom:8,
+      fontWeight:700, letterSpacing:.5, textTransform:"uppercase",
+    }}, type.label),
+    h("input",{
+      type:"number", min:0, step:type.isGranel?.01:1,
+      placeholder:"0", value,
+      onChange: e=>onChange(type.key, e.target.value),
+      style:{
+        width:"100%", background:"transparent", border:"none",
+        borderBottom:`1px solid ${has?accentColor+"60":"rgba(255,255,255,.1)"}`,
+        color:"#e8edf3", fontSize:22,
+        fontFamily:"'IBM Plex Mono',monospace",
+        padding:"4px 0", outline:"none",
+      },
+    }),
+    type.isGranel && h("div",{style:{fontSize:10,color:"#5a6a7a",marginTop:5}},"en galones"),
+  );
+}
+
+// ─── SUBMIT BUTTON ────────────────────────────────────────────────────────────
+function SubmitBtn({onClick, loading, color, label}) {
+  return h("button",{
+    onClick, disabled:loading,
+    style:{
+      background: loading?"rgba(255,255,255,.04)":`linear-gradient(135deg,${color}28,${color}12)`,
+      border:`1px solid ${loading?"rgba(255,255,255,.08)":color+"60"}`,
+      color: loading?"#4a5a6a":color,
+      borderRadius:10, padding:"13px 28px",
+      fontSize:14, fontWeight:700,
+      cursor: loading?"default":"pointer",
+      letterSpacing:.4, transition:"all .2s",
+      display:"flex", alignItems:"center", gap:8, fontFamily:"inherit",
+    }},
+    loading
+      ? h("span",{style:{animation:"pulse 1s infinite"}},"Enviando…")
+      : h("span",null,`↑ Enviar ${label} a Google Sheets`)
+  );
+}
+
+// ─── GAS FORM ─────────────────────────────────────────────────────────────────
+function GasForm({gasName, groups, sheetName, accentColor}) {
+  const [date,  setDate]  = useState(todayStr);
+  const [form,  setForm]  = useState(()=>emptyForm(groups));
+  const [loading, setLoading] = useState(false);
+  const [toast, showToast, clearToast] = useToast();
+
+  const handleChange = useCallback((key,val) => {
+    setForm(f=>({...f,[key]:val}));
+  },[]);
+
+  const handleSubmit = async () => {
+    const ts = new Date().toISOString();
+    const rows = [];
+    groups.forEach(g => {
+      g.types.forEach(t => {
+        const v = form[t.key];
+        if (v !== "" && v !== "0" && v !== null) {
+          rows.push([ts, date, gasName, g.label, t.label, parseFloat(v)||0]);
+        }
+      });
+    });
+
+    if (!rows.length) { showToast("⚠ No hay datos ingresados.","err"); return; }
+
+    setLoading(true);
+    showToast("Enviando datos…","loading");
+    try {
+      await sendToSheets(sheetName, rows);
+      clearToast();
+      showToast(`✓ ${rows.length} filas enviadas — ${date}`,"ok");
+      setForm(emptyForm(groups));
+    } catch(e) {
+      clearToast();
+      showToast(`✗ ${e.message}`,"err",6000);
+    } finally { setLoading(false); }
+  };
+
+  return h("div",{className:"fade-up"},
+    // Header row
+    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",
+      marginBottom:28,flexWrap:"wrap",gap:16}},
+      h("div",null,
+        h("h1",{style:{fontSize:24,fontWeight:800,color:accentColor,marginBottom:6}},
+          gasName==="LOX"?"Oxígeno Líquido (O₂)":"Nitrógeno Líquido (N₂)"),
+        h("p",{style:{fontSize:13,color:"#5a6a7a"}},
+          "Solo se enviarán los campos con valor mayor a 0."),
+      ),
+      h(DateSelector,{value:date, onChange:setDate, accentColor}),
+    ),
+
+    // Groups
+    groups.map(group =>
+      h("div",{key:group.label, style:{marginBottom:28}},
+        h("div",{style:{
+          fontSize:11,fontWeight:700,color:group.color,letterSpacing:2,
+          textTransform:"uppercase",marginBottom:14,
+          display:"flex",alignItems:"center",gap:10,
+        }},
+          h("div",{style:{width:3,height:14,background:group.color,borderRadius:2}}),
+          group.label,
+        ),
+        h("div",{style:{
+          display:"grid",
+          gridTemplateColumns:"repeat(auto-fill,minmax(118px,1fr))",
+          gap:10,
+        }},
+          group.types.map(type =>
+            h(CylField,{key:type.key, type, value:form[type.key],
+              onChange:handleChange, accentColor:group.color})
+          )
+        )
+      )
+    ),
+
+    // Footer
+    h("div",{style:{
+      marginTop:32, paddingTop:24,
+      borderTop:"1px solid rgba(255,255,255,.07)",
+      display:"flex",justifyContent:"flex-end",
+    }},
+      h(SubmitBtn,{onClick:handleSubmit, loading, color:accentColor, label:gasName})
+    ),
+
+    toast && h(Toast,{msg:toast.msg, type:toast.type}),
+  );
+}
+
+// ─── DESCARGAS FORM ───────────────────────────────────────────────────────────
+function DescargasForm() {
+  const [date,     setDate]    = useState(todayStr);
+  const [loxDesc,  setLoxDesc] = useState("");
+  const [loxDecl,  setLoxDecl] = useState("");
+  const [loxLugar, setLoxLugar]= useState("");
+  const [linDesc,  setLinDesc] = useState("");
+  const [linDecl,  setLinDecl] = useState("");
+  const [loading,  setLoading] = useState(false);
+  const [toast, showToast, clearToast] = useToast();
+
+  const FieldBox = ({label, val, setVal, placeholder, type="number", color}) =>
+    h("div",{style:{
+      background: val?`${color}12`:"rgba(255,255,255,.025)",
+      border:`1px solid ${val?color+"45":"rgba(255,255,255,.06)"}`,
+      borderRadius:10, padding:"14px 16px", flex:1, minWidth:150,
+      transition:"all .15s",
+    }},
+      h("label",{style:{
+        fontSize:11,color:val?color:"#5a6a7a",display:"block",
+        marginBottom:8,fontWeight:700,letterSpacing:.5,textTransform:"uppercase",
+      }},label),
+      h("input",{
+        type, value:val, placeholder,
+        min:type==="number"?0:undefined,
+        onChange:e=>setVal(e.target.value),
+        style:{
+          width:"100%",background:"transparent",border:"none",
+          borderBottom:`1px solid ${val?color+"60":"rgba(255,255,255,.1)"}`,
+          color:"#e8edf3",fontSize:20,
+          fontFamily:"'IBM Plex Mono',monospace",
+          padding:"4px 0",outline:"none",
+        },
+      })
+    );
+
+  const handleSubmit = async () => {
+    const rows = [];
+    const ts = new Date().toISOString();
+    if (loxDesc || loxDecl)
+      rows.push([ts, date, "LOX", parseFloat(loxDesc)||0, parseFloat(loxDecl)||0, loxLugar||""]);
+    if (linDesc || linDecl)
+      rows.push([ts, date, "LIN", parseFloat(linDesc)||0, parseFloat(linDecl)||0, ""]);
+
+    if (!rows.length) { showToast("⚠ No hay datos de descarga.","err"); return; }
+
+    setLoading(true);
+    showToast("Enviando…","loading");
+    try {
+      await sendToSheets("DESCARGAS", rows);
+      clearToast();
+      showToast(`✓ Descarga del ${date} enviada.`,"ok");
+      setLoxDesc(""); setLoxDecl(""); setLoxLugar("");
+      setLinDesc(""); setLinDecl("");
+    } catch(e) {
+      clearToast();
+      showToast(`✗ ${e.message}`,"err",6000);
+    } finally { setLoading(false); }
+  };
+
+  const Divider = ({label,color}) => h("div",{style:{
+    fontSize:11,fontWeight:700,color,letterSpacing:2,
+    textTransform:"uppercase",marginBottom:14,
+    display:"flex",alignItems:"center",gap:10,
+  }},
+    h("div",{style:{width:3,height:14,background:color,borderRadius:2}}),
+    label,
+  );
+
+  return h("div",{className:"fade-up"},
+    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",
+      marginBottom:28,flexWrap:"wrap",gap:16}},
+      h("div",null,
+        h("h1",{style:{fontSize:24,fontWeight:800,color:"#f5a623",marginBottom:6}},"Registro de Descargas"),
+        h("p",{style:{fontSize:13,color:"#5a6a7a"}},"Registre la descarga del camión-cisterna."),
+      ),
+      h(DateSelector,{value:date,onChange:setDate,accentColor:"#f5a623"}),
+    ),
+
+    h("div",{style:{marginBottom:28}},
+      h(Divider,{label:"Oxígeno Líquido — LOX", color:"#00d4aa"}),
+      h("div",{style:{display:"flex",gap:12,flexWrap:"wrap"}},
+        h(FieldBox,{label:"Descarga (lbs)", val:loxDesc, setVal:setLoxDesc, placeholder:"0", color:"#00d4aa"}),
+        h(FieldBox,{label:"Declarado (lbs)", val:loxDecl, setVal:setLoxDecl, placeholder:"0", color:"#00d4aa"}),
+        h(FieldBox,{label:"Lugar de descarga", val:loxLugar, setVal:setLoxLugar, placeholder:"AED…", type:"text", color:"#00d4aa"}),
+      )
+    ),
+
+    h("div",{style:{marginBottom:28}},
+      h(Divider,{label:"Nitrógeno Líquido — LIN", color:"#4f9cff"}),
+      h("div",{style:{display:"flex",gap:12,flexWrap:"wrap"}},
+        h(FieldBox,{label:"Descarga (lbs)", val:linDesc, setVal:setLinDesc, placeholder:"0", color:"#4f9cff"}),
+        h(FieldBox,{label:"Declarado (lbs)", val:linDecl, setVal:setLinDecl, placeholder:"0", color:"#4f9cff"}),
+      )
+    ),
+
+    h("div",{style:{
+      marginTop:32,paddingTop:24,
+      borderTop:"1px solid rgba(255,255,255,.07)",
+      display:"flex",justifyContent:"flex-end",
+    }},
+      h(SubmitBtn,{onClick:handleSubmit,loading,color:"#f5a623",label:"Descarga"})
+    ),
+
+    toast && h(Toast,{msg:toast.msg,type:toast.type}),
+  );
+}
+
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
+function ConfigView() {
+  const [url,   setUrl]   = useState(()=>getUrl());
+  const [saved, setSaved] = useState(false);
+
+  const save = () => {
+    localStorage.setItem("gaspro_script_url", url.trim());
+    setSaved(true);
+    setTimeout(()=>setSaved(false), 2500);
+  };
+
+  const steps = [
+    "1. Abre tu Google Sheet → Extensiones → Apps Script.",
+    "2. Pega el código del archivo apps_script.gs y guarda.",
+    "3. Implementar → Nueva implementación → Tipo: Aplicación web.",
+    "4. Ejecutar como: Yo  ·  Acceso: Cualquier usuario.",
+    "5. Autoriza los permisos cuando Google lo solicite.",
+    "6. Copia la URL /exec generada y pégala arriba.",
+  ];
+
+  return h("div",{className:"fade-up",style:{maxWidth:700}},
+    h("h1",{style:{fontSize:24,fontWeight:800,color:"#c084fc",marginBottom:8}},"Configuración"),
+    h("p",{style:{fontSize:14,color:"#5a6a7a",marginBottom:32,lineHeight:1.6}},
+      "Conecta la app a tu Google Sheet mediante un Apps Script publicado como Web App."),
+
+    h("div",{style:{marginBottom:24}},
+      h("label",{style:{
+        fontSize:12,color:"#8a9aaa",fontWeight:700,
+        letterSpacing:1,textTransform:"uppercase",
+        display:"block",marginBottom:10,
+      }},"URL del Google Apps Script"),
+      h("input",{
+        type:"text", value:url, placeholder:"https://script.google.com/macros/s/…/exec",
+        onChange:e=>setUrl(e.target.value),
+        style:{
+          width:"100%",background:"rgba(255,255,255,.04)",
+          border:"1px solid rgba(192,132,252,.35)",borderRadius:10,
+          color:"#e8edf3",fontSize:13,padding:"14px 16px",
+          outline:"none",fontFamily:"'IBM Plex Mono',monospace",
+        },
+      })
+    ),
+
+    h("button",{
+      onClick:save,
+      style:{
+        background: saved?"rgba(0,212,170,.15)":"linear-gradient(135deg,#c084fc28,#c084fc12)",
+        border:`1px solid ${saved?"#00d4aa60":"#c084fc60"}`,
+        color: saved?"#00d4aa":"#c084fc",
+        borderRadius:10,padding:"12px 24px",
+        fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit",
+      }
+    }, saved?"✓ Guardado":"Guardar URL"),
+
+    h("div",{style:{
+      marginTop:40,padding:22,
+      background:"rgba(255,255,255,.02)",
+      border:"1px solid rgba(255,255,255,.07)",
+      borderRadius:14,
+    }},
+      h("div",{style:{
+        fontSize:12,fontWeight:700,color:"#8a9aaa",
+        letterSpacing:1,textTransform:"uppercase",marginBottom:16,
+      }},"Cómo configurar el Apps Script"),
+      steps.map((s,i)=>h("div",{key:i,
+        style:{fontSize:13,color:"#5a6a7a",marginBottom:10,lineHeight:1.6}}, s)),
+
+      h("div",{style:{
+        marginTop:20,padding:14,
+        background:"rgba(192,132,252,.08)",
+        border:"1px solid rgba(192,132,252,.2)",
+        borderRadius:10,fontSize:12,color:"#b0a0c0",lineHeight:1.6,
+      }},
+        "⚠ Importante: El Google Sheet debe tener tres pestañas llamadas exactamente ",
+        h("code",{style:{background:"rgba(255,255,255,.06)",padding:"1px 6px",borderRadius:4,fontFamily:"monospace"}},"LOX"),
+        ", ",
+        h("code",{style:{background:"rgba(255,255,255,.06)",padding:"1px 6px",borderRadius:4,fontFamily:"monospace"}},"LIN"),
+        " y ",
+        h("code",{style:{background:"rgba(255,255,255,.06)",padding:"1px 6px",borderRadius:4,fontFamily:"monospace"}},"DESCARGAS"),
+        ". La primera fila de cada pestaña debe contener los encabezados.",
+      )
+    )
+  );
+}
+
+// ─── APP ROOT ─────────────────────────────────────────────────────────────────
+function App() {
+  const [tab, setTab] = useState("LOX");
+
+  const noUrl = !getUrl();
+
+  const tabs = [
+    {id:"LOX",       label:"O₂ Oxígeno",  color:"#00d4aa"},
+    {id:"LIN",       label:"N₂ Nitrógeno",color:"#4f9cff"},
+    {id:"DESCARGAS", label:"Descargas",   color:"#f5a623"},
+    {id:"CONFIG",    label:"⚙",           color:"#c084fc"},
+  ];
+
+  return h("div",{style:{display:"flex",flexDirection:"column",minHeight:"100vh"}},
+
+    h("header",{style:{
+      background:"rgba(255,255,255,.015)",
+      borderBottom:"1px solid rgba(255,255,255,.06)",
+      padding:"14px 24px",
+      display:"flex",alignItems:"center",gap:14,
+    }},
+      h("div",{style:{
+        background:"linear-gradient(135deg,#00d4aa,#4f9cff)",
+        borderRadius:10,width:38,height:38,flexShrink:0,
+        display:"flex",alignItems:"center",justifyContent:"center",
+        fontSize:17,fontWeight:900,color:"#0b0f17",
+      }},"G"),
+      h("div",null,
+        h("div",{style:{fontSize:15,fontWeight:800,letterSpacing:.3}},
+          "GASPRO HONDURAS S.A."),
+        h("div",{style:{fontSize:11,color:"#5a6a7a",letterSpacing:1}},
+          "REGISTRO MENSUAL DE PRODUCCIÓN"),
+      ),
+      noUrl && h("div",{
+        style:{
+          marginLeft:"auto",background:"#f5a62318",
+          border:"1px solid #f5a62345",color:"#f5a623",
+          borderRadius:8,padding:"6px 12px",fontSize:12,fontWeight:600,
+          cursor:"pointer",
+        },
+        onClick:()=>setTab("CONFIG"),
+      },"⚠ Configura la URL de Apps Script"),
+    ),
+
+    h("nav",{style:{
+      borderBottom:"1px solid rgba(255,255,255,.06)",
+      padding:"0 20px",display:"flex",
+      background:"rgba(255,255,255,.01)",
+    }},
+      tabs.map(t=>h("button",{
+        key:t.id, onClick:()=>setTab(t.id),
+        style:{
+          background:"transparent",border:"none",
+          color: tab===t.id?t.color:"#5a6a7a",
+          fontSize: t.id==="CONFIG"?18:13,
+          fontWeight: tab===t.id?700:500,
+          padding:"13px 18px",cursor:"pointer",
+          borderBottom:`2px solid ${tab===t.id?t.color:"transparent"}`,
+          transition:"all .15s",fontFamily:"inherit",letterSpacing:.3,
+        }
+      },t.label))
+    ),
+
+    h("main",{style:{flex:1,overflowY:"auto",padding:"28px 24px"}},
+      tab==="LOX"       && h(GasForm,{key:"lox",gasName:"LOX",groups:LOX_GROUPS,sheetName:"LOX",accentColor:"#00d4aa"}),
+      tab==="LIN"       && h(GasForm,{key:"lin",gasName:"LIN",groups:LIN_GROUPS,sheetName:"LIN",accentColor:"#4f9cff"}),
+      tab==="DESCARGAS" && h(DescargasForm,{key:"desc"}),
+      tab==="CONFIG"    && h(ConfigView,{key:"cfg"}),
+    ),
+  );
+}
+
+createRoot(document.getElementById("root")).render(h(App));
+</script>
+</body>
+</html>
